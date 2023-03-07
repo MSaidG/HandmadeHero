@@ -88,5 +88,10 @@
   "files.associations": {
     "cstdio": "cpp",
     "typeinfo": "cpp"
-  }
+  },
+
+  "workbench.colorCustomizations" : {
+    "terminal.foreground" : "#00FD61",
+    "terminal.background" : "#000000"
+}
 }

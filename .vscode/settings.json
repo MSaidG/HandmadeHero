@@ -41,8 +41,8 @@
     "REVIEW:",
     {
       "text": "NOTE:",
-      "color": "red",
-      "border": "1px solid red",
+      "color": "green",
+      "border": "1px solid green",
       "borderRadius": "2px",
       "backgroundColor": "rgba(0,0,0,.2)"
     },

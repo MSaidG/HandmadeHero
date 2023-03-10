@@ -89,9 +89,8 @@
     "cstdio": "cpp",
     "typeinfo": "cpp"
   },
-
-  "workbench.colorCustomizations" : {
-    "terminal.foreground" : "#00FD61",
-    "terminal.background" : "#000000"
-}
+  "workbench.colorCustomizations": {
+    "terminal.foreground": "#00FD61",
+    "terminal.background": "#000000"
+  }
 }

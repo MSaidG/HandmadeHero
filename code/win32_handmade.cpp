@@ -19,13 +19,7 @@
     - Just a partial list of stuff!
 */
 
-#include <malloc.h>
-#include <windows.h>
-#include <stdint.h> 
-#include <xInput.h>
-#include <dsound.h>
-#include <math.h>
-#include <cstdio>
+
 
 #include "handmade.cpp"
 #include "win32_handmade.h"
@@ -66,19 +60,103 @@ global_variable x_input_set_state *XInputSetState_ = XInputSetStateStub;
 #define DIRECT_SOUND_CREATE(name) HRESULT WINAPI (name)(LPCGUID lpGUID,LPDIRECTSOUND *ppDS,LPUNKNOWN pUnkOuter)
 typedef DIRECT_SOUND_CREATE(direct_sound_create);
 
+
+internal debug_read_file_result DEBUGPlatformReadEntireFile(char *fileName)
+{
+    debug_read_file_result result = {};
+    HANDLE fileHandle = CreateFileA(fileName, GENERIC_READ, FILE_SHARE_READ, 0, OPEN_EXISTING, 0, 0);
+
+    if (fileHandle != INVALID_HANDLE_VALUE)
+    {
+        LARGE_INTEGER fileSize;
+        if (GetFileSizeEx (fileHandle, &fileSize))
+        {
+            uint32_t fileSize32 = SafeTruncateUInt64(fileSize.QuadPart);
+            result.contents = VirtualAlloc(0, fileSize32, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+            if (result.contents)
+            {
+                // TODO: Defines for max values UInt32Max
+                DWORD bytesRead;
+                if (ReadFile(fileHandle, result.contents, fileSize32, &bytesRead, 0) && fileSize32 == bytesRead)
+                {
+                    // NOTE: File read succesfully
+                    result.contentSize = fileSize32;
+                }
+                else
+                {
+                    DEBUGPlatformFreeFileMemory(result.contents);
+                    result.contents = 0;
+                }
+            }
+            else
+            {
+                // TODO: Logging    
+            }
+        }
+        else
+        {
+            // TODO: Logging    
+        }
+
+        CloseHandle(fileHandle);
+    }
+    else
+    {
+        // TODO: Logging    
+    }
+    
+    return result;
+}
+
+internal void DEBUGPlatformFreeFileMemory(void *memory)
+{
+    if (memory)
+    {
+        VirtualFree(memory, 0, MEM_RELEASE);
+    }
+}
+
+internal bool DEBUGPlatformWriteEntireFile(char *fileName, uint32_t memorySize, void *memory)
+{
+
+    bool result = false;
+
+    HANDLE fileHandle = CreateFileA (fileName, GENERIC_WRITE, 0, 0, CREATE_ALWAYS, 0, 0);
+    if (fileHandle != INVALID_HANDLE_VALUE)
+    {
+        DWORD bytesWritten;
+        if (WriteFile(fileHandle, memory, memorySize, &bytesWritten, 0))
+        {
+            result = (bytesWritten == memorySize);
+        }
+        else
+        {
+        }
+    }
+    else
+    {
+
+    }
+
+    return result;
+}
+
+
+
  // NOTE: Madness is end it here
 
 internal void Win32LoadXInputLib(void)
 {
-    HMODULE XInputLibrary =  LoadLibraryA("xinput1_4.dll");
+    HMODULE XInputLibrary =  LoadLibraryA("xinput9_1_0.dll");
+    
     if (!XInputLibrary)
     {
-        HMODULE XInputLibrary = LoadLibraryA("xinput9_1_0.dll");
+        XInputLibrary = LoadLibraryA("xinput1_4.dll");
     }
 
     if (!XInputLibrary)
     {
-        HMODULE XInputLibrary =  LoadLibraryA("xinput1_3.dll");
+        XInputLibrary =  LoadLibraryA("xinput1_3.dll");
     }
 
     if (XInputLibrary)
@@ -263,63 +341,7 @@ internal LRESULT Wndproc(HWND Window, UINT Message, WPARAM WParam, LPARAM LParam
         case WM_KEYDOWN:
         case WM_KEYUP:
         {
-            VKCode = WParam;
-            bool wasDown = ((LParam & (1 << 30)) != 0);
-            bool isDown = ((LParam & (1 << 31)) == 0);
-
-            if (wasDown != isDown)
-            {
-                if (VKCode == 0x57)
-                {
-                    OutputDebugStringA("W\n");
-                }
-                else if (VKCode == 0x41)
-                {
-                    OutputDebugStringA("A\n");
-                }
-                else if (VKCode == 0x53)
-                {
-                    OutputDebugStringA("S\n");
-                }
-                else if (VKCode == 0x44)
-                {
-                    OutputDebugStringA("D\n");
-                }
-                else if (VKCode == 0x45)
-                {
-                    OutputDebugStringA("E\n");
-                }
-                else if (VKCode == 0x51)
-                {
-                    OutputDebugStringA("Q\n");
-                }
-                else if (VKCode == VK_ESCAPE)
-                {
-                    OutputDebugStringA("ESC:");
-                    if (isDown)
-                    {
-                        OutputDebugStringA("isDown");
-                    }
-
-                    if (wasDown)
-                    {
-                        OutputDebugStringA("wasDown");
-                    }
-                        OutputDebugStringA("\n");
-                }
-                else if (VKCode == VK_SPACE)
-                {
-                    OutputDebugStringA("SPACE\n");
-                }
-            }
-
-
-
-            bool AltKeyWasDown = ((LParam & (1 << 29)) != 0);
-            if ((VKCode == VK_F4) && AltKeyWasDown)
-            {
-                isGameRunning = false;
-            }
+            
 
         }
             break;
@@ -436,6 +458,12 @@ internal void Win32FillSoundBar(win32_sound_output *SoundOutput, DWORD ByteToLoc
     }
 }
 
+internal void Win32ProcessKeyboardMessage (game_button_state *newState, bool isDown)
+{
+    newState->endedDown  = isDown;
+    ++newState->halfTransitionCount;
+} 
+
 
 internal void Win32ProcessDigitalXInputButton ( DWORD xInputButtonState, game_button_state *oldState, DWORD buttonBit, game_button_state *newState)
 {
@@ -447,7 +475,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PSTR pCmdLine, 
 {
     LARGE_INTEGER PerfCountFrequencyResult;
     QueryPerformanceFrequency(&PerfCountFrequencyResult);
-    int64_t PerfCountFrequency = PerfCountFrequencyResult.QuadPart;
+    //int64_t PerfCountFrequency = PerfCountFrequencyResult.QuadPart;
     
     Win32LoadXInputLib();
 
@@ -471,7 +499,6 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PSTR pCmdLine, 
             // Graphic Test
 
             win32_sound_output SoundOutput = {};
-            SoundOutput.SamplePerSecond;
             SoundOutput.SamplePerSecond = 48000;
             SoundOutput.RunningSampleIndex = 0;
             SoundOutput.BytesPerSample = sizeof(int16_t) * 2;
@@ -516,7 +543,11 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PSTR pCmdLine, 
                 {   
 
                     MSG Message;
-
+                    game_controller_input *keyboardController = &newInput->controllers[0];
+                    // TODO: Zeroing macro needed
+                    game_controller_input zeroController = {};
+                    *keyboardController = zeroController;
+                    keyboardController->isAnalog = true;
 
                     while (PeekMessage(&Message, 0, 0, 0, PM_REMOVE))
                     {   
@@ -525,20 +556,99 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PSTR pCmdLine, 
                             isGameRunning = false;
                         }
 
-                        TranslateMessage(&Message);
-                        DispatchMessage(&Message);
+                        switch (Message.message)
+                        {
+                            case WM_SYSKEYUP:
+                            case WM_KEYDOWN:
+                            case WM_SYSKEYDOWN:
+                            case WM_KEYUP:
+                            {
+                                
+                                VKCode = (uint32_t)Message.wParam;
+                                bool wasDown = ((Message.lParam & (1 << 30)) != 0);
+                                bool isDown = ((Message.lParam & (1 << 31)) == 0);
+
+
+                                if (VKCode == 0x57)
+                                {
+                                    OutputDebugStringA("W\n");
+                                }
+                                else if (VKCode == 0x41)
+                                {
+                                    OutputDebugStringA("A\n");
+                                }
+                                else if (VKCode == 0x53)
+                                {
+                                    OutputDebugStringA("S\n");
+                                }
+                                else if (VKCode == 0x44)
+                                {
+                                    OutputDebugStringA("D\n");
+                                }
+                                else if (VKCode == 0x45)
+                                {
+                                    Win32ProcessKeyboardMessage(&keyboardController->leftShoulder, isDown);   
+                                }
+                                else if (VKCode == 0x51)
+                                {
+                                    Win32ProcessKeyboardMessage(&keyboardController->leftShoulder, isDown);     
+                                }
+                                else if (VKCode == VK_UP)
+                                {
+                                    Win32ProcessKeyboardMessage(&keyboardController->up, isDown);  
+                                }
+                                else if (VKCode == VK_RIGHT)
+                                {
+                                    Win32ProcessKeyboardMessage(&keyboardController->right, isDown);     
+                                }
+                                else if (VKCode == VK_LEFT)
+                                {
+                                    Win32ProcessKeyboardMessage(&keyboardController->left, isDown);     
+                                }
+                                else if (VKCode == VK_DOWN)
+                                {
+                                    Win32ProcessKeyboardMessage (&keyboardController->down, isDown);     
+                                }
+
+                                else if (VKCode == VK_ESCAPE)
+                                {
+                                    isGameRunning = false;
+                                }
+                                else if (VKCode == VK_SPACE)
+                                {
+                                    OutputDebugStringA("SPACE\n");
+                                }
+                                
+
+                                bool AltKeyWasDown = ((Message.lParam & (1 << 29)) != 0);
+                                if ((VKCode == VK_F4) && AltKeyWasDown)
+                                {
+                                    isGameRunning = false;
+                                }
+
+                                
+                            }
+                            break;
+                        
+                            default:
+                            {
+                                TranslateMessage(&Message);
+                                DispatchMessage(&Message);
+                            }
+                            break;
+                        }
+
                     }
 
                     // NOTE: Can pull this more frequently                
-                    DWORD controllerIndex;
 
                     int maxControllerCount = XUSER_MAX_COUNT;
-                    if (maxControllerCount > ArrayCount(newInput->controllers))
+                    if (maxControllerCount > (int)ArrayCount(newInput->controllers))
                     {
                         maxControllerCount = ArrayCount(newInput->controllers);
                     }
 
-                    for (DWORD controllerIndex=0; controllerIndex < maxControllerCount; controllerIndex++)
+                    for (DWORD controllerIndex=0; (int)controllerIndex < maxControllerCount; controllerIndex++)
                     {
 
                         game_controller_input *oldController = &oldInput->controllers[controllerIndex];
@@ -551,13 +661,6 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PSTR pCmdLine, 
                         {
                             // NOTE: Controller is connected
                             XINPUT_GAMEPAD *Pad = &ControllerState.Gamepad;
-
-                            // TODO: Dpad
-                            bool up = (Pad->wButtons & XINPUT_GAMEPAD_DPAD_UP);
-                            bool right = (Pad->wButtons & XINPUT_GAMEPAD_DPAD_RIGHT);
-                            bool left = (Pad->wButtons & XINPUT_GAMEPAD_DPAD_LEFT);
-                            bool down = (Pad->wButtons & XINPUT_GAMEPAD_DPAD_DOWN);
-
 
                             newController->isAnalog = true;
 
@@ -595,16 +698,22 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PSTR pCmdLine, 
                             Win32ProcessDigitalXInputButton (Pad->wButtons, &oldController->left, XINPUT_GAMEPAD_X, &newController->left);     
                             Win32ProcessDigitalXInputButton (Pad->wButtons, &oldController->up, XINPUT_GAMEPAD_Y, &newController->up);     
                             Win32ProcessDigitalXInputButton (Pad->wButtons, &oldController->leftShoulder, XINPUT_GAMEPAD_LEFT_SHOULDER, &newController->leftShoulder);     
-                            Win32ProcessDigitalXInputButton (Pad->wButtons, &oldController->rightShoulder, XINPUT_GAMEPAD_RIGHT_SHOULDER, &newController->leftShoulder);     
+                            Win32ProcessDigitalXInputButton (Pad->wButtons, &oldController->rightShoulder, XINPUT_GAMEPAD_RIGHT_SHOULDER, &newController->leftShoulder);   
 
-                            bool leftShoulder = (Pad->wButtons & XINPUT_GAMEPAD_LEFT_SHOULDER);
-                            bool rightShoulder = (Pad->wButtons & XINPUT_GAMEPAD_RIGHT_SHOULDER);
+                            // TODO: Dpad
+                            //bool up = (Pad->wButtons & XINPUT_GAMEPAD_DPAD_UP);
+                            //bool right = (Pad->wButtons & XINPUT_GAMEPAD_DPAD_RIGHT);
+                            //bool left = (Pad->wButtons & XINPUT_GAMEPAD_DPAD_LEFT);
+                            //bool down = (Pad->wButtons & XINPUT_GAMEPAD_DPAD_DOWN);  
+
+                            //bool leftShoulder = (Pad->wButtons & XINPUT_GAMEPAD_LEFT_SHOULDER);
+                            //bool rightShoulder = (Pad->wButtons & XINPUT_GAMEPAD_RIGHT_SHOULDER);
                             bool aButton = (Pad->wButtons & XINPUT_GAMEPAD_A);
-                            bool bButton = (Pad->wButtons & XINPUT_GAMEPAD_B);
-                            bool xButton = (Pad->wButtons & XINPUT_GAMEPAD_X);
-                            bool yButton = (Pad->wButtons & XINPUT_GAMEPAD_Y);
-                            bool startButton = (Pad->wButtons & XINPUT_GAMEPAD_START);
-                            bool backButton = (Pad->wButtons & XINPUT_GAMEPAD_BACK);
+                            //bool bButton = (Pad->wButtons & XINPUT_GAMEPAD_B);
+                            //bool xButton = (Pad->wButtons & XINPUT_GAMEPAD_X);
+                            //bool yButton = (Pad->wButtons & XINPUT_GAMEPAD_Y);
+                            //bool startButton = (Pad->wButtons & XINPUT_GAMEPAD_START);
+                            //bool backButton = (Pad->wButtons & XINPUT_GAMEPAD_BACK);
 
 
                             XINPUT_VIBRATION Vibration;
@@ -688,13 +797,13 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PSTR pCmdLine, 
                     LARGE_INTEGER EndCounter;
                     QueryPerformanceCounter(&EndCounter);
 
-                    int64_t CyclesElapsed = EndCycleCount - LastCycleCount;
-                    int64_t CounterElapsed = EndCounter.QuadPart - LastCounter.QuadPart;
-                    float MsPerFrame = (float)(((1000.0f*(float)CounterElapsed) / (float)PerfCountFrequency));
-                    float FPS = (float)PerfCountFrequency / (float)CounterElapsed;
-                    float MegaCyclePerFrame = (float)CyclesElapsed / (1000.0f * 1000.0f);
-
+                    //int64_t CyclesElapsed = EndCycleCount - LastCycleCount;
+                    //int64_t CounterElapsed = EndCounter.QuadPart - LastCounter.QuadPart;
+                    //float MsPerFrame = (float)(((1000.0f*(float)CounterElapsed) / (float)PerfCountFrequency));
+                    //float FPS = (float)PerfCountFrequency / (float)CounterElapsed;
+                    //float MegaCyclePerFrame = (float)CyclesElapsed / (1000.0f * 1000.0f);
                     //printf("%fms | %ffps | %fmc \n", MsPerFrame, FPS, MegaCyclePerFrame);
+
 
                     LastCounter = EndCounter;
                     LastCycleCount = EndCycleCount;

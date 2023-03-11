@@ -1,6 +1,13 @@
 // NOTE: Services that the game provides to the platfrom layer.
 #define HANDMADE_SLOW 1
 #define HANDMADE_INTERNAL 1
+#include <malloc.h>
+#include <windows.h>
+#include <stdint.h> 
+#include <xInput.h>
+#include <dsound.h>
+#include <math.h>
+#include <cstdio>
 /*
     // NOTE: Build Types
 
@@ -15,18 +22,47 @@
 
 */
 
-#define ArrayCount(array) (sizeof(array) / sizeof((array)[0]))
-#define Kilobytes(value) ((value)*1024)
-#define Megabytes(value) (Kilobytes(value)*1024)
-#define Gigabytes(value) (Megabytes(value)*1024)
-#define Terabytes(value) (Gigabytes(value)*1024)
-
 #if (HANDMADE_SLOW)
 #define Assert(expression) \
     if (!(expression)) {*(int *)0 = 0;}
 #else
 #define Assert(expression)
 #endif
+
+
+#define ArrayCount(array) (sizeof(array) / sizeof((array)[0]))
+#define Kilobytes(value) ((value)*1024)
+#define Megabytes(value) (Kilobytes(value)*1024)
+#define Gigabytes(value) (Megabytes(value)*1024)
+#define Terabytes(value) (Gigabytes(value)*1024)
+
+
+inline uint32_t SafeTruncateUInt64 (uint64_t value)
+{
+    Assert(value <= 0xFFFFFFFF);
+    uint32_t result = (uint32_t) value;
+    return (result);
+
+}
+
+
+#if HANDMADE_INTERNAL
+
+struct debug_read_file_result
+{
+    uint32_t contentSize;
+    void *contents;
+};
+
+
+static debug_read_file_result DEBUGPlatformReadEntireFile(char *fileName);
+static void DEBUGPlatformFreeFileMemory(void *memory);
+static bool DEBUGPlatformWriteEntireFile(char *fileName, uint32_t memorySize, void *memory);
+
+#endif
+
+
+
 
 // NOTE: Services that the platform layer provides to the game 
 // might expand in thew future (multi threading)
